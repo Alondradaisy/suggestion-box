@@ -1,48 +1,9 @@
 const bcrypt = require("bcryptjs");
 const User = require("../model/User");
-const {
-    checkIsEmpty,
-    checkIsStrongPassword,
-    checkIsEmail,
-    checkIsAlpha,
-    checkIsAlphanumeric,
-} = require("../../utils/authMethods");
+const jwt = require("jsonwebtoken");
 async function signup(req, res) {
     const { username, email, password, firstName, lastName } = req.body;
-    let errorObj = {};
-    let inComingData = req.body;
-    // for (let key in inComingData) {
-    //   if (checkIsEmpty(inComingData[key])) {
-    //     errorObj[key] = `${key} cannot be empty`;
-    //   }
-    // }
-    // if (Object.keys(errorObj).length > 0) {
-    //   return res.status(500).json({ message: "failure", payload: errorObj });
-    // }
-    //check password strength
-    if (!checkIsStrongPassword(password)) {
-        errorObj.weakPassword =
-        "Password must include 1 lowercase, 1 uppercase, 1 special character, 1 number, and a length of 8";
-    }
-    if (!checkIsEmail(email)) {
-        errorObj.wrongEmailFormat = "Must be in email format!";
-    }
-    for (key in inComingData) {
-        if (key === "firstName" || key === "lastName") {
-            if (!checkIsAlpha(inComingData[key])) {
-                errorObj[`${key}`] = `${key} can only have characters`;
-            }
-        }
-    }
-    // if (!checkIsAlpha(firstName)) {
-    //   errorObj.firstNameError = "First Name can only have characters";
-    // }
-    // if (!checkIsAlpha(lastName)) {
-    //   errorObj.lastNameError = "Last Name can only have characters";
-    // }
-    if (!checkIsAlphanumeric(username)) {
-        errorObj.usernameError = "username can only have characters and numbers";
-    }
+    const { errorObj } = res.locals;
     if (Object.keys(errorObj).length > 0) {
         return res.status(500).json({ message: "failure", payload: errorObj });
     }
@@ -66,28 +27,41 @@ async function signup(req, res) {
 }
 async function login(req, res) {
     const { email, password } = req.body;
-    if (Object.keys(req.body).length === 0) {
-        return res.status(500).json({ message: "Please fill out the form" });
-    }
-    let errorObj = {};
-    if (checkIsEmpty(email)) {
-        errorObj.email = "Email cannot be empty";
-    }
-    if (checkIsEmpty(password)) {
-        errorObj.password = "Password cannot be empty";
-    }
-    if (!isEmail(email)) {
-        errorObj.wrongEmailFormat = "Must be in email format!";
-    }
+    const { errorObj } = res.locals;
     if (Object.keys(errorObj).length > 0) {
         return res.status(500).json({ message: "failure", payload: errorObj });
     }
     try {
-        //dont worry about
-    } catch (e) {
-        console.log(e);
-        console.log(e.message);
-        res.json({ message: "error", error: e });
+        let foundUser = await User.findOne({ email: email });
+        if (!foundUser) {
+            res.status(400).json({
+                message: "failure",
+                payload: "Please check your email and password",
+            });
+        } else {
+            //password = 1, foundUser.password = $2a$12$tauL3AEb5gvKdcQdDKNWLeIYv422jNq2aRsaNWF5J4TdcWEdhq4CO
+            let comparedPassword = await bcrypt.compare(password, foundUser.password);
+            if (!comparedPassword) {
+                res.status(400).json({
+                    message: "failure",
+                    payload: "Please check your email and password",
+                });
+            } else {
+                let jwtToken = jwt.sign(
+                    {
+                        email: foundUser.email,
+                        username: foundUser.username,
+                    },
+                    process.env.PRIVATE_JWT_KEY,
+                    {
+                        expiresIn: "1d",
+                    }
+                    );
+                    res.json({ message: "success", payload: jwtToken });
+                }
+            }
+        } catch (e) {
+            res.json({ message: "error", error: e });
+        }
     }
-}
-module.exports = { signup };
+    module.exports = { signup, login };
